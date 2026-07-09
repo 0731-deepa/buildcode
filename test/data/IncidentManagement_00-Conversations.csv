@@ -1,0 +1,11 @@
+ID,timestamp,author,message,attachmentFileName,attachmentMediaType,incident_ID
+a1b2c3d4-e5f6-7890-abcd-ef1234567890,2026-06-01T08:00:00Z,cds-plugin-ui5@0.17.4,Inverter shows error code E04 on display.,inverter-error-report.pdf,application/pdf,8fc8231b-f6d7-4f9d-8c4e-1a2b3c4d5e6f
+b2c3d4e5-f6a7-8901-bcde-f12345678901,2026-06-01T09:30:00Z,alice@example.com,Please share the inverter model and installation date.,,,8fc8231b-f6d7-4f9d-8c4e-1a2b3c4d5e6f
+c3d4e5f6-a7b8-9012-cdef-123456789012,2026-06-01T10:15:00Z,cds-plugin-ui5@0.17.4,Model SX-3000 installed in March 2025.,sx3000-installation-guide.pdf,application/pdf,8fc8231b-f6d7-4f9d-8c4e-1a2b3c4d5e6f
+d4e5f6a7-b8c9-0123-def0-234567890123,2026-06-03T07:45:00Z,cds-dk@9.9.1,Two panels in row C are not generating any output.,panel-inspection-photos.pdf,application/pdf,3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d
+e5f6a7b8-c9d0-1234-ef01-345678901234,2026-06-03T09:00:00Z,alice@example.com,Likely micro-crack issue. Technician dispatched.,,,3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d
+f6a7b8c9-d0e1-2345-f012-456789012345,2026-06-05T11:00:00Z,dave@example.com,Battery does not hold charge beyond 2 hours.,battery-test-results.pdf,application/pdf,9b8a7f6e-5d4c-3b2a-1098-7654fedc3210
+a7b8c9d0-e1f2-3456-0123-567890123456,2026-06-05T12:30:00Z,alice@example.com,Check BMS firmware version and report back.,,,9b8a7f6e-5d4c-3b2a-1098-7654fedc3210
+b8c9d0e1-f2a3-4567-1234-678901234567,2026-06-08T14:00:00Z,cds-plugin-ui5@0.17.4,Dashboard shows no data since yesterday evening.,monitoring-system-log.pdf,application/pdf,c1d2e3f4-a5b6-7c8d-9e0f-1a2b3c4d5e6f
+c9d0e1f2-a3b4-5678-2345-789012345678,2026-06-10T09:00:00Z,cds@9.9.2,Noticed burning smell near junction box.,wiring-inspection-report.pdf,application/pdf,f7e6d5c4-b3a2-1098-fedc-ba9876543210
+d0e1f2a3-b4c5-6789-3456-890123456789,2026-06-10T10:00:00Z,alice@example.com,Do not operate system. Safety team will visit today.,,,f7e6d5c4-b3a2-1098-fedc-ba9876543210

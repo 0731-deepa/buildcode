@@ -1,0 +1,4 @@
+BusinessPartner,BusinessPartnerFullName,BusinessPartnerType,BusinessPartnerIsBlocked
+1000001,GreenEnergy Solutions GmbH,1,false
+1000002,SolarTech Industries Ltd,1,false
+1000003,EcoVolt Power Systems,1,false

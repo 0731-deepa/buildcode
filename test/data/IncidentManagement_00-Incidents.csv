@@ -1,0 +1,6 @@
+ID,title,urgency_code,customer_BusinessPartner
+8fc8231b-f6d7-4f9d-8c4e-1a2b3c4d5e6f,Inverter not functional,H,1000001
+3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d,Solar panel broken,M,1000002
+9b8a7f6e-5d4c-3b2a-1098-7654fedc3210,Battery backup failure,H,1000003
+c1d2e3f4-a5b6-7c8d-9e0f-1a2b3c4d5e6f,Monitoring system offline,M,1000001
+f7e6d5c4-b3a2-1098-fedc-ba9876543210,Faulty wiring in junction box,L,1000002

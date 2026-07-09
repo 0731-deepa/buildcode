@@ -1,0 +1,4 @@
+code,name,descr
+H,High,Critical issue requiring immediate attention
+M,Medium,Important issue to be resolved soon
+L,Low,Minor issue with low business impact
