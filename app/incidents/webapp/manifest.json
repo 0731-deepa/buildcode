@@ -179,7 +179,7 @@
                     },
                     "IncidentService.previewAttachment": {
                       "press": "incidents.ext.CustomActions.onPreviewPDF",
-                      "text": "Preview PDF",
+                      "text": "",
                       "icon": "sap-icon://search",
                       "visible": "{= ${attachmentMediaType} === 'application/pdf' }"
                     }
