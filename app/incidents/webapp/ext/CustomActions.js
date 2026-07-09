@@ -144,10 +144,23 @@ sap.ui.define([
                 || null;
             var sOwnerId = (oOwner && oOwner.getId && oOwner.getId()) || "default";
 
-            var oModel = new JSONModel({ source: sPdfUrl, fileName: sFileName });
+            // Fetch the PDF as a Blob and build a local object URL for the
+            // viewer. This bypasses the server's `Content-Disposition:
+            // attachment` header (emitted by @Core.ContentDisposition.Filename)
+            // which would otherwise force the browser to download instead of
+            // rendering the file inline in the PDFViewer.
             var oControllerLike = {
                 onClosePDFPreview: function (oEvent) {
                     var oDialog = oEvent.getSource().getParent();
+                    var oPreviewModel = oDialog.getModel("pdfPreview");
+                    // Revoke any previously issued blob URL to avoid leaks.
+                    if (oPreviewModel) {
+                        var sPrev = oPreviewModel.getProperty("/source");
+                        if (sPrev && sPrev.indexOf("blob:") === 0) {
+                            URL.revokeObjectURL(sPrev);
+                        }
+                        oPreviewModel.setProperty("/source", "");
+                    }
                     oDialog.close();
                 }
             };
@@ -161,14 +174,46 @@ sap.ui.define([
                     if (oOwner && oOwner.addDependent) {
                         oOwner.addDependent(oDialog);
                     }
+                    oDialog.setModel(new JSONModel({ source: "", fileName: "", busy: false }), "pdfPreview");
                     return oDialog;
                 });
                 mPreviewDialogs[sOwnerId] = pDialog;
             }
 
             pDialog.then(function (oDialog) {
-                oDialog.setModel(oModel, "pdfPreview");
+                var oPreviewModel = oDialog.getModel("pdfPreview");
+                // Revoke previous blob URL, if any, before assigning a new one.
+                var sPrev = oPreviewModel.getProperty("/source");
+                if (sPrev && sPrev.indexOf("blob:") === 0) {
+                    URL.revokeObjectURL(sPrev);
+                }
+                // Show the dialog immediately with a busy indicator so the
+                // user gets instant feedback while the PDF is being fetched.
+                oPreviewModel.setData({ source: "", fileName: sFileName, busy: true });
                 oDialog.open();
+
+                return fetch(sPdfUrl, {
+                    headers: { "Accept": "application/pdf" }
+                }).then(function (oResponse) {
+                    if (!oResponse.ok) {
+                        return oResponse.text().then(function (sText) {
+                            throw new Error(sText || oResponse.statusText);
+                        });
+                    }
+                    return oResponse.blob();
+                }).then(function (oBlob) {
+                    // Force the MIME type so the browser treats the blob URL
+                    // as a PDF regardless of what the server sent.
+                    var oPdfBlob = oBlob.type === "application/pdf"
+                        ? oBlob
+                        : new Blob([oBlob], { type: "application/pdf" });
+                    var sBlobUrl = URL.createObjectURL(oPdfBlob);
+                    oPreviewModel.setProperty("/source", sBlobUrl);
+                    oPreviewModel.setProperty("/busy", false);
+                }).catch(function (oErr) {
+                    oPreviewModel.setProperty("/busy", false);
+                    throw oErr;
+                });
             }).catch(function (oErr) {
                 MessageBox.error("Failed to open PDF preview: " + (oErr && oErr.message ? oErr.message : oErr));
             });

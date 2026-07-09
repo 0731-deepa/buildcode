@@ -8,7 +8,9 @@
         contentHeight="80%"
         stretch="{device>/system/phone}"
         resizable="true"
-        draggable="true">
+        draggable="true"
+        busy="{pdfPreview>/busy}"
+        busyIndicatorDelay="0">
         <content>
             <PDFViewer
                 id="pdfViewer"
@@ -18,6 +20,7 @@
                 showDownloadButton="true"
                 displayType="Embedded"
                 source="{pdfPreview>/source}"
+                visible="{= !!${pdfPreview>/source} }"
                 errorPlaceholderMessage="The PDF cannot be loaded. The file may be missing or unavailable." />
         </content>
         <beginButton>
