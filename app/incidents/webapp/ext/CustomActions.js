@@ -10,26 +10,6 @@ sap.ui.define([
     // multiple fragments when the user opens the preview repeatedly.
     var mPreviewDialogs = {};
 
-    /**
-     * Extracts the direct Conversations entity path from an object-page
-     * binding context path. CAP's media stream endpoint requires a
-     * non-draft key such as `/Conversations(<uuid>)` – it does not
-     * accept the composed `/Incidents(...)/conversations(...)` path
-     * with `IsActiveEntity` segments.
-     *
-     * @param {string} sPath - raw binding context path
-     * @returns {string} entity path pointing to /Conversations(<key>)
-     */
-    function buildConversationEntityPath(sPath) {
-        var oMatch = sPath.match(/conversations\(([^)]+)\)/i);
-        var sKey = oMatch ? oMatch[1] : null;
-        if (sKey) {
-            sKey = sKey.replace(/,IsActiveEntity=(true|false)/i, "")
-                       .replace(/IsActiveEntity=(true|false),/i, "");
-        }
-        return sKey ? "/Conversations(" + sKey + ")" : sPath;
-    }
-
     return {
 
         /**
@@ -145,11 +125,14 @@ sap.ui.define([
                 return;
             }
 
+            // The binding context path already contains the composite key
+            // (ID + IsActiveEntity) required by the draft-enabled entity,
+            // so it can be used directly against the media stream endpoint.
             var sServiceUrl = oContext.getModel().getServiceUrl
                 ? oContext.getModel().getServiceUrl()
                 : "/incident/";
             var sPdfUrl = sServiceUrl.replace(/\/$/, "")
-                + buildConversationEntityPath(oContext.getPath())
+                + oContext.getPath()
                 + "/attachment";
             var sFileName = oContext.getProperty("attachmentFileName") || "attachment.pdf";
 
