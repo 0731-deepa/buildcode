@@ -142,6 +142,16 @@ annotate service.Conversations with @(
                 ![@Common.FieldControl]: #ReadOnly,
             },
             {
+                // Magnifier icon rendered right after "File Name" that
+                // triggers the client-side PDF preview. Hidden while no
+                // PDF attachment is present on the current conversation.
+                $Type      : 'UI.DataFieldForAction',
+                Label      : 'Preview PDF',
+                Action     : 'IncidentService.previewAttachment',
+                ![@UI.Importance]: #High,
+                ![@UI.Hidden]    : { $edmJson: { $Ne: [ { $Path: 'attachmentMediaType' }, 'application/pdf' ] } },
+            },
+            {
                 $Type                  : 'UI.DataField',
                 Label                  : 'Media Type',
                 Value                  : attachmentMediaType,

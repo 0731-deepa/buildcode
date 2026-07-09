@@ -176,6 +176,12 @@
                       "icon": "sap-icon://upload",
                       "enabled": "{= ${ui>/isEditable} }",
                       "visible": true
+                    },
+                    "IncidentService.previewAttachment": {
+                      "press": "incidents.ext.CustomActions.onPreviewPDF",
+                      "text": "Preview PDF",
+                      "icon": "sap-icon://search",
+                      "visible": "{= ${attachmentMediaType} === 'application/pdf' }"
                     }
                   }
                 }

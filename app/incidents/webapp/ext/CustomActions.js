@@ -1,8 +1,34 @@
 sap.ui.define([
     "sap/m/MessageToast",
-    "sap/m/MessageBox"
-], function (MessageToast, MessageBox) {
+    "sap/m/MessageBox",
+    "sap/ui/core/Fragment",
+    "sap/ui/model/json/JSONModel"
+], function (MessageToast, MessageBox, Fragment, JSONModel) {
     "use strict";
+
+    // Cached dialog instance, keyed by owner view id so we do not leak
+    // multiple fragments when the user opens the preview repeatedly.
+    var mPreviewDialogs = {};
+
+    /**
+     * Extracts the direct Conversations entity path from an object-page
+     * binding context path. CAP's media stream endpoint requires a
+     * non-draft key such as `/Conversations(<uuid>)` – it does not
+     * accept the composed `/Incidents(...)/conversations(...)` path
+     * with `IsActiveEntity` segments.
+     *
+     * @param {string} sPath - raw binding context path
+     * @returns {string} entity path pointing to /Conversations(<key>)
+     */
+    function buildConversationEntityPath(sPath) {
+        var oMatch = sPath.match(/conversations\(([^)]+)\)/i);
+        var sKey = oMatch ? oMatch[1] : null;
+        if (sKey) {
+            sKey = sKey.replace(/,IsActiveEntity=(true|false)/i, "")
+                       .replace(/IsActiveEntity=(true|false),/i, "");
+        }
+        return sKey ? "/Conversations(" + sKey + ")" : sPath;
+    }
 
     return {
 
@@ -85,6 +111,84 @@ sap.ui.define([
             };
 
             oInput.click();
+        },
+
+        /**
+         * Fiori Elements action override handler for the "Preview PDF"
+         * magnifier icon added to the Attachment field group. Opens a
+         * dialog with an embedded PDFViewer bound to the attachment
+         * stream endpoint of the current conversation.
+         *
+         * @param {sap.ui.model.odata.v4.Context|sap.ui.model.odata.v4.Context[]} vContexts
+         *        - the context(s) passed by the Fiori Elements action framework
+         */
+        onPreviewPDF: function (vContexts) {
+            var oContext = Array.isArray(vContexts) ? vContexts[0] : vContexts;
+
+            // When triggered from a form (single object page), `this`
+            // may be the Fiori Elements ExtensionAPI and the context
+            // isn't passed – fall back to the current view context.
+            if (!oContext && this && typeof this.getBindingContext === "function") {
+                oContext = this.getBindingContext();
+            }
+            if (!oContext && this && this.getView && typeof this.getView === "function") {
+                oContext = this.getView().getBindingContext();
+            }
+            if (!oContext) {
+                MessageToast.show("No conversation selected.");
+                return;
+            }
+
+            var sMediaType = oContext.getProperty("attachmentMediaType");
+            if (sMediaType !== "application/pdf") {
+                MessageToast.show("No PDF attachment available.");
+                return;
+            }
+
+            var sServiceUrl = oContext.getModel().getServiceUrl
+                ? oContext.getModel().getServiceUrl()
+                : "/incident/";
+            var sPdfUrl = sServiceUrl.replace(/\/$/, "")
+                + buildConversationEntityPath(oContext.getPath())
+                + "/attachment";
+            var sFileName = oContext.getProperty("attachmentFileName") || "attachment.pdf";
+
+            // Resolve an owner control so Fragment.load can register the
+            // dialog into the correct dependents hierarchy and dispose
+            // it together with the view.
+            var oOwner = (this && this.getView && this.getView())
+                || (this && typeof this.byId === "function" && this)
+                || null;
+            var sOwnerId = (oOwner && oOwner.getId && oOwner.getId()) || "default";
+
+            var oModel = new JSONModel({ source: sPdfUrl, fileName: sFileName });
+            var oControllerLike = {
+                onClosePDFPreview: function (oEvent) {
+                    var oDialog = oEvent.getSource().getParent();
+                    oDialog.close();
+                }
+            };
+
+            var pDialog = mPreviewDialogs[sOwnerId];
+            if (!pDialog) {
+                pDialog = Fragment.load({
+                    name: "incidents.ext.fragment.PDFPreviewDialog",
+                    controller: oControllerLike
+                }).then(function (oDialog) {
+                    if (oOwner && oOwner.addDependent) {
+                        oOwner.addDependent(oDialog);
+                    }
+                    return oDialog;
+                });
+                mPreviewDialogs[sOwnerId] = pDialog;
+            }
+
+            pDialog.then(function (oDialog) {
+                oDialog.setModel(oModel, "pdfPreview");
+                oDialog.open();
+            }).catch(function (oErr) {
+                MessageBox.error("Failed to open PDF preview: " + (oErr && oErr.message ? oErr.message : oErr));
+            });
         }
     };
 });
