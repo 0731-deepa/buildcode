@@ -6,9 +6,26 @@ sap.ui.define([
 ], function (MessageToast, MessageBox, Fragment, JSONModel) {
     "use strict";
 
-    // Cached dialog instance, keyed by owner view id so we do not leak
+    // Cached PDFViewer instance, keyed by owner view id so we do not leak
     // multiple fragments when the user opens the preview repeatedly.
-    var mPreviewDialogs = {};
+    var mPreviewViewers = {};
+
+    /**
+     * Revokes any blob URL currently assigned to the given PDFViewer,
+     * to avoid leaking the underlying Blob in memory.
+     *
+     * @param {sap.m.PDFViewer} oViewer
+     */
+    function revokeBlobSource(oViewer) {
+        if (!oViewer) { return; }
+        var oModel = oViewer.getModel("pdfPreview");
+        if (!oModel) { return; }
+        var sPrev = oModel.getProperty("/source");
+        if (sPrev && sPrev.indexOf("blob:") === 0) {
+            URL.revokeObjectURL(sPrev);
+        }
+        oModel.setProperty("/source", "");
+    }
 
     return {
 
@@ -95,9 +112,17 @@ sap.ui.define([
 
         /**
          * Fiori Elements action override handler for the "Preview PDF"
-         * magnifier icon added to the Attachment field group. Opens a
-         * dialog with an embedded PDFViewer bound to the attachment
-         * stream endpoint of the current conversation.
+         * magnifier icon added to the Attachment field group.
+         *
+         * Follows the pattern from the UI5 sample
+         * `sap.m.sample.PDFViewerPopup`: a `sap.m.PDFViewer` instance is
+         * loaded from a fragment and opened via its own `.open()` method,
+         * which shows the viewer as a properly-styled popup dialog with
+         * toolbar, download button and illustrated error states.
+         *
+         * The stream is fetched as a Blob so the browser renders it
+         * inline regardless of the server's Content-Disposition: attachment
+         * header (emitted by @Core.ContentDisposition.Filename).
          *
          * @param {sap.ui.model.odata.v4.Context|sap.ui.model.odata.v4.Context[]} vContexts
          *        - the context(s) passed by the Fiori Elements action framework
@@ -137,60 +162,56 @@ sap.ui.define([
             var sFileName = oContext.getProperty("attachmentFileName") || "attachment.pdf";
 
             // Resolve an owner control so Fragment.load can register the
-            // dialog into the correct dependents hierarchy and dispose
-            // it together with the view.
+            // viewer into the correct dependents hierarchy and dispose it
+            // together with the view.
             var oOwner = (this && this.getView && this.getView())
                 || (this && typeof this.byId === "function" && this)
                 || null;
             var sOwnerId = (oOwner && oOwner.getId && oOwner.getId()) || "default";
 
-            // Fetch the PDF as a Blob and build a local object URL for the
-            // viewer. This bypasses the server's `Content-Disposition:
-            // attachment` header (emitted by @Core.ContentDisposition.Filename)
-            // which would otherwise force the browser to download instead of
-            // rendering the file inline in the PDFViewer.
+            // Controller-like object exposing the event handlers referenced
+            // by the fragment (loaded, error, close).
             var oControllerLike = {
+                onPDFLoaded: function () {
+                    MessageToast.show("PDF loaded.");
+                },
+                onPDFError: function () {
+                    MessageBox.error("The PDF could not be displayed. Please try downloading it instead.");
+                },
                 onClosePDFPreview: function (oEvent) {
-                    var oDialog = oEvent.getSource().getParent();
-                    var oPreviewModel = oDialog.getModel("pdfPreview");
-                    // Revoke any previously issued blob URL to avoid leaks.
-                    if (oPreviewModel) {
-                        var sPrev = oPreviewModel.getProperty("/source");
-                        if (sPrev && sPrev.indexOf("blob:") === 0) {
-                            URL.revokeObjectURL(sPrev);
-                        }
-                        oPreviewModel.setProperty("/source", "");
+                    // popupButtons live inside the PDFViewer's internal dialog;
+                    // walk up to the PDFViewer itself and call its close().
+                    var oControl = oEvent.getSource();
+                    while (oControl && (!oControl.getMetadata
+                        || oControl.getMetadata().getName() !== "sap.m.PDFViewer")) {
+                        oControl = oControl.getParent();
                     }
-                    oDialog.close();
+                    if (oControl && typeof oControl.close === "function") {
+                        oControl.close();
+                    }
                 }
             };
 
-            var pDialog = mPreviewDialogs[sOwnerId];
-            if (!pDialog) {
-                pDialog = Fragment.load({
+            var pViewer = mPreviewViewers[sOwnerId];
+            if (!pViewer) {
+                pViewer = Fragment.load({
                     name: "incidents.ext.fragment.PDFPreviewDialog",
                     controller: oControllerLike
-                }).then(function (oDialog) {
+                }).then(function (oViewer) {
                     if (oOwner && oOwner.addDependent) {
-                        oOwner.addDependent(oDialog);
+                        oOwner.addDependent(oViewer);
                     }
-                    oDialog.setModel(new JSONModel({ source: "", fileName: "", busy: false }), "pdfPreview");
-                    return oDialog;
+                    oViewer.setModel(new JSONModel({ source: "", fileName: "" }), "pdfPreview");
+                    return oViewer;
                 });
-                mPreviewDialogs[sOwnerId] = pDialog;
+                mPreviewViewers[sOwnerId] = pViewer;
             }
 
-            pDialog.then(function (oDialog) {
-                var oPreviewModel = oDialog.getModel("pdfPreview");
-                // Revoke previous blob URL, if any, before assigning a new one.
-                var sPrev = oPreviewModel.getProperty("/source");
-                if (sPrev && sPrev.indexOf("blob:") === 0) {
-                    URL.revokeObjectURL(sPrev);
-                }
-                // Show the dialog immediately with a busy indicator so the
-                // user gets instant feedback while the PDF is being fetched.
-                oPreviewModel.setData({ source: "", fileName: sFileName, busy: true });
-                oDialog.open();
+            pViewer.then(function (oViewer) {
+                var oPreviewModel = oViewer.getModel("pdfPreview");
+                // Revoke previous blob URL, if any, before fetching a new one.
+                revokeBlobSource(oViewer);
+                oPreviewModel.setProperty("/fileName", sFileName);
 
                 return fetch(sPdfUrl, {
                     headers: { "Accept": "application/pdf" }
@@ -209,10 +230,9 @@ sap.ui.define([
                         : new Blob([oBlob], { type: "application/pdf" });
                     var sBlobUrl = URL.createObjectURL(oPdfBlob);
                     oPreviewModel.setProperty("/source", sBlobUrl);
-                    oPreviewModel.setProperty("/busy", false);
-                }).catch(function (oErr) {
-                    oPreviewModel.setProperty("/busy", false);
-                    throw oErr;
+                    // Open the popup only after the source is set so the
+                    // viewer renders the PDF immediately.
+                    oViewer.open();
                 });
             }).catch(function (oErr) {
                 MessageBox.error("Failed to open PDF preview: " + (oErr && oErr.message ? oErr.message : oErr));

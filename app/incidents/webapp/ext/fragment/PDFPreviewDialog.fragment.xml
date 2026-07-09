@@ -1,33 +1,25 @@
 <core:FragmentDefinition
     xmlns="sap.m"
     xmlns:core="sap.ui.core">
-    <Dialog
-        id="pdfPreviewDialog"
+    <!--
+        Native PDFViewer popup, following the pattern documented at
+        https://ui5.sap.com/#/entity/sap.m.PDFViewer/sample/sap.m.sample.PDFViewerPopup
+        The viewer opens its own dialog via .open() – no wrapping <Dialog>
+        is needed. The controller handler wires the source at runtime.
+    -->
+    <PDFViewer
+        id="pdfPreviewViewer"
         title="{pdfPreview>/fileName}"
-        contentWidth="80%"
-        contentHeight="80%"
-        stretch="{device>/system/phone}"
-        resizable="true"
-        draggable="true"
-        busy="{pdfPreview>/busy}"
-        busyIndicatorDelay="0">
-        <content>
-            <PDFViewer
-                id="pdfViewer"
-                width="100%"
-                height="100%"
-                isTrustedSource="true"
-                showDownloadButton="true"
-                displayType="Embedded"
-                source="{pdfPreview>/source}"
-                visible="{= !!${pdfPreview>/source} }"
-                errorPlaceholderMessage="The PDF cannot be loaded. The file may be missing or unavailable." />
-        </content>
-        <beginButton>
+        source="{pdfPreview>/source}"
+        isTrustedSource="true"
+        showDownloadButton="true"
+        loaded=".onPDFLoaded"
+        error=".onPDFError">
+        <popupButtons>
             <Button
                 id="pdfPreviewCloseButton"
                 text="Close"
                 press=".onClosePDFPreview" />
-        </beginButton>
-    </Dialog>
+        </popupButtons>
+    </PDFViewer>
 </core:FragmentDefinition>
