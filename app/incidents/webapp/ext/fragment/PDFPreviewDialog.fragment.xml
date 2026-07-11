@@ -2,24 +2,67 @@
     xmlns="sap.m"
     xmlns:core="sap.ui.core">
     <!--
-        Native PDFViewer popup, following the pattern documented at
-        https://ui5.sap.com/#/entity/sap.m.PDFViewer/sample/sap.m.sample.PDFViewerPopup
-        The viewer opens its own dialog via .open() – no wrapping <Dialog>
-        is needed. The controller handler wires the source at runtime.
+        Embedded PDFViewer inside a resizable Dialog, following the pattern
+        documented at:
+        https://ui5.sap.com/#/entity/sap.m.PDFViewer/sample/sap.m.sample.PDFViewerEmbedded
+
+        The PDFViewer is embedded directly in the Dialog's content area with
+        an explicit height (displayType="Embedded"), so the PDF renders inline
+        with a stable, page-like preview. A subheader shows attachment
+        metadata; the footer offers Download and Close actions.
     -->
-    <PDFViewer
-        id="pdfPreviewViewer"
+    <Dialog
+        id="pdfPreviewDialog"
         title="{pdfPreview>/fileName}"
-        source="{pdfPreview>/source}"
-        isTrustedSource="true"
-        showDownloadButton="true"
-        loaded=".onPDFLoaded"
-        error=".onPDFError">
-        <popupButtons>
+        contentWidth="60rem"
+        contentHeight="80vh"
+        resizable="true"
+        draggable="true"
+        verticalScrolling="false"
+        horizontalScrolling="false"
+        afterClose=".onAfterClosePDFPreview">
+        <subHeader>
+            <Toolbar id="pdfPreviewSubHeader">
+                <ObjectStatus
+                    id="pdfPreviewMediaTypeStatus"
+                    text="{pdfPreview>/mediaType}"
+                    icon="sap-icon://pdf-attachment"
+                    visible="{= !!${pdfPreview>/mediaType} }" />
+                <ToolbarSpacer id="pdfPreviewSubHeaderSpacer" />
+                <ObjectStatus
+                    id="pdfPreviewSizeStatus"
+                    text="{pdfPreview>/sizeText}"
+                    icon="sap-icon://document"
+                    visible="{= !!${pdfPreview>/sizeText} }" />
+            </Toolbar>
+        </subHeader>
+        <content>
+            <PDFViewer
+                id="pdfPreviewViewer"
+                title="{pdfPreview>/fileName}"
+                source="{pdfPreview>/source}"
+                width="100%"
+                height="100%"
+                displayType="Embedded"
+                isTrustedSource="true"
+                showDownloadButton="true"
+                loaded=".onPDFLoaded"
+                error=".onPDFError" />
+        </content>
+        <beginButton>
+            <Button
+                id="pdfPreviewDownloadButton"
+                text="Download"
+                type="Emphasized"
+                icon="sap-icon://download"
+                enabled="{= !!${pdfPreview>/source} }"
+                press=".onDownloadPDFPreview" />
+        </beginButton>
+        <endButton>
             <Button
                 id="pdfPreviewCloseButton"
                 text="Close"
                 press=".onClosePDFPreview" />
-        </popupButtons>
-    </PDFViewer>
+        </endButton>
+    </Dialog>
 </core:FragmentDefinition>

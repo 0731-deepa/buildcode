@@ -2,29 +2,118 @@ sap.ui.define([
     "sap/m/MessageToast",
     "sap/m/MessageBox",
     "sap/ui/core/Fragment",
-    "sap/ui/model/json/JSONModel"
-], function (MessageToast, MessageBox, Fragment, JSONModel) {
+    "sap/ui/model/json/JSONModel",
+    "sap/base/Log",
+    "sap/base/security/URLListValidator"
+], function (MessageToast, MessageBox, Fragment, JSONModel, Log, URLListValidator) {
     "use strict";
 
-    // Cached PDFViewer instance, keyed by owner view id so we do not leak
-    // multiple fragments when the user opens the preview repeatedly.
-    var mPreviewViewers = {};
+    // Dedicated logger component so all debug output can be filtered in the
+    // browser console via `sap.base.Log.setLevel(4, "incidents.PDFPreview")`.
+    var LOG_COMPONENT = "incidents.PDFPreview";
+    Log.setLevel(Log.Level.DEBUG, LOG_COMPONENT);
+
+    // sap.m.PDFViewer runs every `source` value through sap.base.security's
+    // URLListValidator. If any Fiori launchpad / FE plugin has already
+    // populated an allow-list, the default rules reject `blob:` (and
+    // `data:`) URLs — which manifests as a PDFViewer `error` event with a
+    // null `target` parameter and the illustrated "cannot display" state.
+    //
+    // Register the two schemes once at module load so our runtime-created
+    // blob URLs pass validation. `.add()` is idempotent and cheap.
+    (function ensurePdfSchemesAllowed() {
+        try {
+            URLListValidator.add("blob");
+            URLListValidator.add("data");
+            Log.debug(
+                "Registered 'blob' and 'data' schemes with URLListValidator",
+                null,
+                LOG_COMPONENT
+            );
+        } catch (oErr) {
+            Log.warning(
+                "Could not extend URLListValidator: " + oErr.message,
+                null,
+                LOG_COMPONENT
+            );
+        }
+    }());
+
+    // Cached Dialog instances, keyed by conversation ID (NOT full context
+    // path) so a single dialog is reused across draft <-> active transitions
+    // where the path flips between IsActiveEntity=true/false.
+    var mPreviewDialogs = {};
 
     /**
-     * Revokes any blob URL currently assigned to the given PDFViewer,
-     * to avoid leaking the underlying Blob in memory.
+     * Extracts the stable Conversations ID from a v4 context path such as
+     *   /Incidents(...)/conversations(ID=...,IsActiveEntity=...)
+     * so we can use it as a draft-agnostic cache key.
      *
-     * @param {sap.m.PDFViewer} oViewer
+     * @param {string} sPath
+     * @returns {string}
      */
-    function revokeBlobSource(oViewer) {
-        if (!oViewer) { return; }
-        var oModel = oViewer.getModel("pdfPreview");
+    function extractConversationId(sPath) {
+        if (!sPath) { return ""; }
+        var aMatches = sPath.match(/conversations\(ID=([^,)]+)/);
+        return aMatches && aMatches[1] ? aMatches[1] : sPath;
+    }
+
+    /**
+     * Formats a byte count as a human-readable size string (e.g. "1.23 MB").
+     *
+     * @param {number} iBytes
+     * @returns {string}
+     */
+    function formatBytes(iBytes) {
+        if (!iBytes && iBytes !== 0) { return ""; }
+        if (iBytes < 1024) { return iBytes + " B"; }
+        var aUnits = ["KB", "MB", "GB"];
+        var fSize = iBytes / 1024;
+        var iUnit = 0;
+        while (fSize >= 1024 && iUnit < aUnits.length - 1) {
+            fSize /= 1024;
+            iUnit++;
+        }
+        return fSize.toFixed(2) + " " + aUnits[iUnit];
+    }
+
+    /**
+     * Revokes any blob URL currently assigned to the pdfPreview model of the
+     * given Dialog, to avoid leaking the underlying Blob in memory.
+     *
+     * @param {sap.m.Dialog} oDialog
+     */
+    function revokeBlobSource(oDialog) {
+        if (!oDialog) { return; }
+        var oModel = oDialog.getModel("pdfPreview");
         if (!oModel) { return; }
         var sPrev = oModel.getProperty("/source");
         if (sPrev && sPrev.indexOf("blob:") === 0) {
+            Log.debug("Revoking previous blob URL: " + sPrev, null, LOG_COMPONENT);
             URL.revokeObjectURL(sPrev);
         }
         oModel.setProperty("/source", "");
+    }
+
+    /**
+     * Walks up the control hierarchy from the given control until a Dialog
+     * (or any control whose metadata name matches) is found. Returns null
+     * if no ancestor of that type exists.
+     *
+     * @param {sap.ui.core.Control} oControl
+     * @param {string} sTypeName - e.g. "sap.m.Dialog"
+     * @returns {sap.ui.core.Control|null}
+     */
+    function findAncestor(oControl, sTypeName) {
+        var oCurrent = oControl;
+        while (oCurrent) {
+            if (oCurrent.getMetadata
+                && oCurrent.getMetadata().getName() === sTypeName) {
+                return oCurrent;
+            }
+            oCurrent = oCurrent.getParent && oCurrent.getParent();
+        }
+        return null;
     }
 
     return {
@@ -115,10 +204,11 @@ sap.ui.define([
          * magnifier icon added to the Attachment field group.
          *
          * Follows the pattern from the UI5 sample
-         * `sap.m.sample.PDFViewerPopup`: a `sap.m.PDFViewer` instance is
-         * loaded from a fragment and opened via its own `.open()` method,
-         * which shows the viewer as a properly-styled popup dialog with
-         * toolbar, download button and illustrated error states.
+         * `sap.m.sample.PDFViewerEmbedded`: a `sap.m.PDFViewer` is embedded
+         * inside a resizable `sap.m.Dialog` with an explicit width/height
+         * (displayType="Embedded"). This provides a stable, page-like
+         * preview with a title bar, metadata subheader, and Download / Close
+         * footer buttons.
          *
          * The stream is fetched as a Blob so the browser renders it
          * inline regardless of the server's Content-Disposition: attachment
@@ -128,24 +218,31 @@ sap.ui.define([
          *        - the context(s) passed by the Fiori Elements action framework
          */
         onPreviewPDF: function (vContexts) {
+            Log.info("=== onPreviewPDF invoked ===", null, LOG_COMPONENT);
+            Log.debug("Raw argument type: " + (Array.isArray(vContexts) ? "Array[" + vContexts.length + "]" : typeof vContexts), null, LOG_COMPONENT);
+
+            // Fiori Elements invokes press handlers with `this` bound to the
+            // ExtensionAPI and passes either a single Context (object page)
+            // or an array of Contexts (table row selection).
+            var oExtensionAPI = this;
             var oContext = Array.isArray(vContexts) ? vContexts[0] : vContexts;
 
-            // When triggered from a form (single object page), `this`
-            // may be the Fiori Elements ExtensionAPI and the context
-            // isn't passed – fall back to the current view context.
-            if (!oContext && this && typeof this.getBindingContext === "function") {
-                oContext = this.getBindingContext();
-            }
-            if (!oContext && this && this.getView && typeof this.getView === "function") {
-                oContext = this.getView().getBindingContext();
-            }
-            if (!oContext) {
+            if (!oContext || typeof oContext.getProperty !== "function") {
+                Log.error("No valid binding context received", oContext, LOG_COMPONENT);
                 MessageToast.show("No conversation selected.");
                 return;
             }
 
+            var sContextPath = oContext.getPath();
             var sMediaType = oContext.getProperty("attachmentMediaType");
+            var sFileName = oContext.getProperty("attachmentFileName") || "attachment.pdf";
+
+            Log.debug("Context path : " + sContextPath, null, LOG_COMPONENT);
+            Log.debug("Media type   : " + sMediaType, null, LOG_COMPONENT);
+            Log.debug("File name    : " + sFileName, null, LOG_COMPONENT);
+
             if (sMediaType !== "application/pdf") {
+                Log.warning("Attachment is not a PDF (mediaType=" + sMediaType + ")", null, LOG_COMPONENT);
                 MessageToast.show("No PDF attachment available.");
                 return;
             }
@@ -153,89 +250,225 @@ sap.ui.define([
             // The binding context path already contains the composite key
             // (ID + IsActiveEntity) required by the draft-enabled entity,
             // so it can be used directly against the media stream endpoint.
-            var sServiceUrl = oContext.getModel().getServiceUrl
-                ? oContext.getModel().getServiceUrl()
+            var oModel = oContext.getModel();
+            var sServiceUrl = oModel && oModel.getServiceUrl
+                ? oModel.getServiceUrl()
                 : "/incident/";
             var sPdfUrl = sServiceUrl.replace(/\/$/, "")
-                + oContext.getPath()
+                + sContextPath
                 + "/attachment";
-            var sFileName = oContext.getProperty("attachmentFileName") || "attachment.pdf";
 
-            // Resolve an owner control so Fragment.load can register the
-            // viewer into the correct dependents hierarchy and dispose it
-            // together with the view.
-            var oOwner = (this && this.getView && this.getView())
-                || (this && typeof this.byId === "function" && this)
-                || null;
-            var sOwnerId = (oOwner && oOwner.getId && oOwner.getId()) || "default";
+            Log.debug("Service URL  : " + sServiceUrl, null, LOG_COMPONENT);
+            Log.info("PDF stream URL: " + sPdfUrl, null, LOG_COMPONENT);
 
             // Controller-like object exposing the event handlers referenced
-            // by the fragment (loaded, error, close).
+            // by the fragment (loaded/error/download/close/afterClose).
             var oControllerLike = {
                 onPDFLoaded: function () {
-                    MessageToast.show("PDF loaded.");
+                    Log.info("PDFViewer 'loaded' event fired", null, LOG_COMPONENT);
                 },
-                onPDFError: function () {
-                    MessageBox.error("The PDF could not be displayed. Please try downloading it instead.");
+                onPDFError: function (oEvent) {
+                    var oTarget = oEvent.getParameter("target");
+                    var sIframeSrc = oTarget && oTarget.src ? oTarget.src : "(no target)";
+                    Log.error(
+                        "PDFViewer 'error' event fired. iframe src=" + sIframeSrc,
+                        null,
+                        LOG_COMPONENT
+                    );
+
+                    // A null `target` means PDFViewer rejected the source
+                    // *before* creating the iframe – typically because the
+                    // URLListValidator disallowed the scheme or the browser
+                    // has no built-in PDF plugin. Offer to open the blob
+                    // URL in a new tab as a graceful fallback.
+                    var oDialog = findAncestor(oEvent.getSource(), "sap.m.Dialog");
+                    var oPreviewModel = oDialog && oDialog.getModel("pdfPreview");
+                    var sBlobUrl = oPreviewModel && oPreviewModel.getProperty("/source");
+
+                    if (sBlobUrl && sBlobUrl.indexOf("blob:") === 0) {
+                        MessageBox.warning(
+                            "The embedded viewer could not display this PDF. "
+                            + "Would you like to open it in a new browser tab instead?",
+                            {
+                                actions: [MessageBox.Action.YES, MessageBox.Action.NO],
+                                emphasizedAction: MessageBox.Action.YES,
+                                onClose: function (sAction) {
+                                    if (sAction === MessageBox.Action.YES) {
+                                        Log.info(
+                                            "User chose to open PDF in new tab",
+                                            null,
+                                            LOG_COMPONENT
+                                        );
+                                        window.open(sBlobUrl, "_blank", "noopener,noreferrer");
+                                    }
+                                }
+                            }
+                        );
+                    } else {
+                        MessageBox.error(
+                            "The PDF could not be displayed. Please try downloading it instead."
+                            + "\n\nDebug info:\n  iframe src: " + sIframeSrc
+                        );
+                    }
+                },
+                onDownloadPDFPreview: function (oEvent) {
+                    // Walk up to the Dialog, then find the PDFViewer in its content.
+                    var oDialog = findAncestor(oEvent.getSource(), "sap.m.Dialog");
+                    if (!oDialog) {
+                        Log.error("Download: could not locate wrapping Dialog", null, LOG_COMPONENT);
+                        return;
+                    }
+                    var aContent = oDialog.getContent() || [];
+                    for (var i = 0; i < aContent.length; i++) {
+                        if (aContent[i].getMetadata
+                            && aContent[i].getMetadata().getName() === "sap.m.PDFViewer"
+                            && typeof aContent[i].downloadPDF === "function") {
+                            Log.info("Triggering PDFViewer.downloadPDF()", null, LOG_COMPONENT);
+                            aContent[i].downloadPDF();
+                            return;
+                        }
+                    }
+                    Log.warning("Download: no PDFViewer found in Dialog content", null, LOG_COMPONENT);
                 },
                 onClosePDFPreview: function (oEvent) {
-                    // popupButtons live inside the PDFViewer's internal dialog;
-                    // walk up to the PDFViewer itself and call its close().
-                    var oControl = oEvent.getSource();
-                    while (oControl && (!oControl.getMetadata
-                        || oControl.getMetadata().getName() !== "sap.m.PDFViewer")) {
-                        oControl = oControl.getParent();
+                    var oDialog = findAncestor(oEvent.getSource(), "sap.m.Dialog");
+                    if (oDialog && typeof oDialog.close === "function") {
+                        Log.debug("Closing preview dialog", null, LOG_COMPONENT);
+                        oDialog.close();
+                    } else {
+                        Log.error("Close: could not locate wrapping Dialog", null, LOG_COMPONENT);
                     }
-                    if (oControl && typeof oControl.close === "function") {
-                        oControl.close();
-                    }
+                },
+                onAfterClosePDFPreview: function (oEvent) {
+                    Log.debug("Dialog afterClose - freeing blob URL", null, LOG_COMPONENT);
+                    revokeBlobSource(oEvent.getSource());
                 }
             };
 
-            var pViewer = mPreviewViewers[sOwnerId];
-            if (!pViewer) {
-                pViewer = Fragment.load({
-                    name: "incidents.ext.fragment.PDFPreviewDialog",
-                    controller: oControllerLike
-                }).then(function (oViewer) {
-                    if (oOwner && oOwner.addDependent) {
-                        oOwner.addDependent(oViewer);
-                    }
-                    oViewer.setModel(new JSONModel({ source: "", fileName: "" }), "pdfPreview");
-                    return oViewer;
+            // Cache key: use the Conversations ID only (draft-agnostic) so a
+            // single Dialog is reused across draft/active transitions of the
+            // same conversation, avoiding orphaned fragments.
+            var sCacheKey = extractConversationId(sContextPath);
+            Log.debug("Dialog cache key: " + sCacheKey, null, LOG_COMPONENT);
+
+            var pDialog = mPreviewDialogs[sCacheKey];
+            if (!pDialog) {
+                Log.info("Loading PDFPreviewDialog fragment (first time for this conversation)", null, LOG_COMPONENT);
+                // Prefer the Fiori Elements ExtensionAPI.loadFragment when
+                // available – it ties the fragment's lifecycle to the view
+                // and ensures proper dependency injection / UIArea registration.
+                var pLoad;
+                if (oExtensionAPI && typeof oExtensionAPI.loadFragment === "function") {
+                    Log.debug("Using ExtensionAPI.loadFragment", null, LOG_COMPONENT);
+                    pLoad = oExtensionAPI.loadFragment({
+                        id: "pdfPreview_" + Date.now(),
+                        name: "incidents.ext.fragment.PDFPreviewDialog",
+                        controller: oControllerLike
+                    });
+                } else {
+                    Log.debug("Using core Fragment.load (no ExtensionAPI)", null, LOG_COMPONENT);
+                    pLoad = Fragment.load({
+                        name: "incidents.ext.fragment.PDFPreviewDialog",
+                        controller: oControllerLike
+                    });
+                }
+
+                pDialog = pLoad.then(function (oDialog) {
+                    Log.info("Fragment loaded, dialog id=" + oDialog.getId(), null, LOG_COMPONENT);
+                    oDialog.setModel(new JSONModel({
+                        source: "",
+                        fileName: "",
+                        mediaType: "",
+                        sizeText: ""
+                    }), "pdfPreview");
+                    return oDialog;
+                }, function (oErr) {
+                    Log.error("Fragment.load failed: " + (oErr && oErr.message ? oErr.message : oErr), oErr, LOG_COMPONENT);
+                    throw oErr;
                 });
-                mPreviewViewers[sOwnerId] = pViewer;
+                mPreviewDialogs[sCacheKey] = pDialog;
+            } else {
+                Log.debug("Reusing cached dialog for conversation " + sCacheKey, null, LOG_COMPONENT);
             }
 
-            pViewer.then(function (oViewer) {
-                var oPreviewModel = oViewer.getModel("pdfPreview");
+            pDialog.then(function (oDialog) {
+                var oPreviewModel = oDialog.getModel("pdfPreview");
+                if (!oPreviewModel) {
+                    Log.error("pdfPreview model not found on dialog", null, LOG_COMPONENT);
+                    throw new Error("Internal error: preview model missing.");
+                }
                 // Revoke previous blob URL, if any, before fetching a new one.
-                revokeBlobSource(oViewer);
+                revokeBlobSource(oDialog);
                 oPreviewModel.setProperty("/fileName", sFileName);
+                oPreviewModel.setProperty("/mediaType", sMediaType);
+                oPreviewModel.setProperty("/sizeText", "");
+
+                Log.info("Fetching PDF stream ...", null, LOG_COMPONENT);
+                var iStart = Date.now();
 
                 return fetch(sPdfUrl, {
-                    headers: { "Accept": "application/pdf" }
+                    headers: { "Accept": "application/pdf" },
+                    credentials: "same-origin"
                 }).then(function (oResponse) {
+                    Log.debug(
+                        "Fetch response: status=" + oResponse.status
+                        + " " + oResponse.statusText
+                        + " content-type=" + oResponse.headers.get("content-type")
+                        + " content-length=" + oResponse.headers.get("content-length"),
+                        null,
+                        LOG_COMPONENT
+                    );
                     if (!oResponse.ok) {
                         return oResponse.text().then(function (sText) {
-                            throw new Error(sText || oResponse.statusText);
+                            Log.error("Stream fetch failed. Body: " + sText, null, LOG_COMPONENT);
+                            throw new Error(
+                                "HTTP " + oResponse.status + " " + oResponse.statusText
+                                + (sText ? " - " + sText : "")
+                            );
                         });
                     }
                     return oResponse.blob();
                 }).then(function (oBlob) {
+                    Log.info(
+                        "Stream fetched in " + (Date.now() - iStart) + "ms. "
+                        + "Blob size=" + oBlob.size + " bytes, type=" + oBlob.type,
+                        null,
+                        LOG_COMPONENT
+                    );
+
+                    if (!oBlob.size) {
+                        throw new Error(
+                            "The attachment stream is empty (0 bytes). "
+                            + "Please make sure a PDF has been uploaded for this conversation."
+                        );
+                    }
+
                     // Force the MIME type so the browser treats the blob URL
                     // as a PDF regardless of what the server sent.
                     var oPdfBlob = oBlob.type === "application/pdf"
                         ? oBlob
                         : new Blob([oBlob], { type: "application/pdf" });
                     var sBlobUrl = URL.createObjectURL(oPdfBlob);
+                    Log.debug("Created blob URL: " + sBlobUrl, null, LOG_COMPONENT);
+
                     oPreviewModel.setProperty("/source", sBlobUrl);
-                    // Open the popup only after the source is set so the
-                    // viewer renders the PDF immediately.
-                    oViewer.open();
+                    oPreviewModel.setProperty("/sizeText", formatBytes(oPdfBlob.size));
+
+                    // Open the wrapping Dialog. The embedded PDFViewer
+                    // starts rendering as soon as its source is bound.
+                    Log.info("Opening preview dialog", null, LOG_COMPONENT);
+                    oDialog.open();
                 });
             }).catch(function (oErr) {
-                MessageBox.error("Failed to open PDF preview: " + (oErr && oErr.message ? oErr.message : oErr));
+                Log.error(
+                    "onPreviewPDF failed: " + (oErr && oErr.message ? oErr.message : oErr),
+                    oErr && oErr.stack ? oErr.stack : null,
+                    LOG_COMPONENT
+                );
+                MessageBox.error(
+                    "Failed to open PDF preview: "
+                    + (oErr && oErr.message ? oErr.message : oErr)
+                );
             });
         }
     };

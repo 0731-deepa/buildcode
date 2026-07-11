@@ -2,15 +2,17 @@
   "name": "IncidentManagement_00",
   "version": "1.0.0",
   "dependencies": {
+    "@cap-js/audit-logging": "^1.2.2",
     "@cap-js/hana": "^2",
-    "@sap/cds": "^9",
-    "@sap/xssec": "^4",
     "@sap-cloud-sdk/connectivity": "^4",
     "@sap-cloud-sdk/http-client": "^4",
-    "@sap-cloud-sdk/resilience": "^4"
+    "@sap-cloud-sdk/resilience": "^4",
+    "@sap/cds": "^9",
+    "@sap/xssec": "^4"
   },
   "devDependencies": {
     "@cap-js/sqlite": "^2.4",
+    "@sap/cds-dk": "^9",
     "@sap/dev-cap-tools": "^1.31.0",
     "cds-plugin-ui5": "^0.17.0"
   },
@@ -22,7 +24,18 @@
   "cds": {
     "requires": {
       "[production]": {
-        "auth": "xsuaa"
+        "auth": "xsuaa",
+        "db": "hana",
+        "destinations": true,
+        "html5-repo": true,
+        "audit-log": {
+          "kind": "audit-log-to-restv2",
+          "credentials": {
+            "vcap": {
+              "label": "auditlog"
+            }
+          }
+        }
       },
       "ADOPTION_LAB_API_BUSINESS_PARTNER": {
         "kind": "odata-v2",

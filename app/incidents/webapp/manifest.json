@@ -1,5 +1,9 @@
 {
   "_version": "1.85.0",
+  "sap.cloud": {
+    "service": "incidentmanagement00.service",
+    "public": true
+  },
   "sap.app": {
     "id": "incidents",
     "type": "application",
@@ -152,7 +156,11 @@
               "controlConfiguration": {
                 "conversations/@com.sap.vocabularies.UI.v1.LineItem#Conversations": {
                   "tableSettings": {
-                    "type": "ResponsiveTable"
+                    "type": "ResponsiveTable",
+                    "creationMode": {
+                      "name": "Inline",
+                      "createAtEnd": true
+                    }
                   }
                 }
               }
@@ -177,9 +185,9 @@
                       "enabled": "{= ${ui>/isEditable} }",
                       "visible": true
                     },
-                    "IncidentService.previewAttachment": {
+                    "previewPDF": {
                       "press": "incidents.ext.CustomActions.onPreviewPDF",
-                      "text": "",
+                      "text": "Preview PDF",
                       "icon": "sap-icon://search",
                       "visible": "{= ${attachmentMediaType} === 'application/pdf' }"
                     }
