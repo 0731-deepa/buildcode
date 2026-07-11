@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "dependencies": {
     "@cap-js/audit-logging": "^1.2.2",
+    "@cap-js/change-tracking": "^2.0.1",
     "@cap-js/hana": "^2",
     "@sap-cloud-sdk/connectivity": "^4",
     "@sap-cloud-sdk/http-client": "^4",

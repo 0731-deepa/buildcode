@@ -19,6 +19,21 @@ service IncidentService @(path: '/incident') {
     entity Conversations as projection on im.Conversations;
     entity Urgency       as projection on im.Urgency;
 
+    // ── Change Tracking ────────────────────────────────────────────────
+    // Track changes on selected Incidents fields. The @cap-js/change-tracking
+    // plugin captures modifications and exposes them in a "Changes" history
+    // section on the Fiori Object Page.
+    annotate Incidents with @changelog: [title] {
+        title    @changelog;
+        urgency  @changelog: [urgency.code, urgency.name];
+        customer @changelog: [customer.BusinessPartnerFullName];
+    };
+
+    // Track message updates in the conversation composition
+    annotate Conversations with @changelog: [author] {
+        message @changelog;
+    };
+
     // ── Read-only projection of BusinessPartner for value help ─────────────
     // NOTE: `@cds.persistence.skip: true` must be repeated here – it is
     // NOT inherited from the underlying `ext.A_BusinessPartner` when the
