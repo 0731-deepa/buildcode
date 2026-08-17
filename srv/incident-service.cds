@@ -18,6 +18,7 @@ service IncidentService @(path: '/incident') {
 
     entity Conversations as projection on im.Conversations;
     entity Urgency       as projection on im.Urgency;
+    entity Status        as projection on im.Status;
 
     // ── Change Tracking ────────────────────────────────────────────────
     // Track changes on selected Incidents fields. The @cap-js/change-tracking
@@ -25,6 +26,7 @@ service IncidentService @(path: '/incident') {
     // section on the Fiori Object Page.
     annotate Incidents with @changelog: [title] {
         title    @changelog;
+        status   @changelog: [status.code, status.name];
         urgency  @changelog: [urgency.code, urgency.name];
         customer @changelog: [customer.BusinessPartnerFullName];
     };

@@ -24,10 +24,28 @@ entity Urgency : CodeList {
 }
 
 
+// ── Status Code List ─────────────────────────────────────────────────────────
+
+type StatusCode : String(1) enum {
+    new        = 'N';
+    assigned   = 'A';
+    in_process = 'I';
+    on_hold    = 'H';
+    resolved   = 'R';
+    closed     = 'C';
+}
+
+entity Status : CodeList {
+    key code        : StatusCode;
+        criticality : Integer;
+}
+
+
 // ── Incidents ────────────────────────────────────────────────────────────────
 
 entity Incidents : cuid {
     title         : String(100);
+    status        : Association to Status;
     urgency       : Association to Urgency;
     customer      : Association to A_BusinessPartner;
     conversations : Composition of many Conversations on conversations.incident = $self;

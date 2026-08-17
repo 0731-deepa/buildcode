@@ -13,6 +13,20 @@ annotate service.Incidents with @odata.draft.enabled;
 
 // ── Make raw codes / IDs render as human-readable text ──────────────────────
 annotate service.Incidents with {
+    status @(
+        Common.Label           : '{i18n>Status}',
+        Common.Text            : status.name,
+        Common.TextArrangement : #TextOnly,
+        Common.ValueList       : {
+            $Type          : 'Common.ValueListType',
+            CollectionPath : 'Status',
+            Parameters     : [
+                { $Type: 'Common.ValueListParameterInOut',     LocalDataProperty: status_code, ValueListProperty: 'code' },
+                { $Type: 'Common.ValueListParameterDisplayOnly', ValueListProperty: 'name'  },
+                { $Type: 'Common.ValueListParameterDisplayOnly', ValueListProperty: 'descr' }
+            ]
+        }
+    );
     urgency  @(
         Common.Label                     : '{i18n>Urgency}',
         Common.Text                      : urgency.name,
@@ -69,20 +83,23 @@ annotate service.Incidents with @(
     },
 
     UI.SelectionFields : [
+        status_code,
         urgency_code,
         customer_BusinessPartner
     ],
 
     UI.LineItem : [
-        { $Type : 'UI.DataField', Label : '{i18n>Title}',    Value : title                    },
-        { $Type : 'UI.DataField', Label : '{i18n>Urgency}',  Value : urgency_code             },
-        { $Type : 'UI.DataField', Label : '{i18n>Customer}', Value : customer_BusinessPartner }
+        { $Type : 'UI.DataField', Label : '{i18n>Title}',    Value : title                                               },
+        { $Type : 'UI.DataField', Label : '{i18n>Status}',   Value : status_code,  Criticality : status.criticality      },
+        { $Type : 'UI.DataField', Label : '{i18n>Urgency}',  Value : urgency_code                                        },
+        { $Type : 'UI.DataField', Label : '{i18n>Customer}', Value : customer_BusinessPartner                            }
     ],
 
     UI.FieldGroup #GeneratedGroup : {
         $Type : 'UI.FieldGroupType',
         Data  : [
             { $Type : 'UI.DataField', Label : '{i18n>Title}',    Value : title                    },
+            { $Type : 'UI.DataField', Label : '{i18n>Status}',   Value : status_code, Criticality : status.criticality },
             { $Type : 'UI.DataField', Label : '{i18n>Urgency}',  Value : urgency_code             },
             { $Type : 'UI.DataField', Label : '{i18n>Customer}', Value : customer_BusinessPartner }
         ]
@@ -196,5 +213,23 @@ annotate service.Urgency with @(
         { $Type : 'UI.DataField', Label : '{i18n>Code}',        Value : code  },
         { $Type : 'UI.DataField', Label : '{i18n>Name}',        Value : name  },
         { $Type : 'UI.DataField', Label : '{i18n>Description}', Value : descr }
+    ]
+);
+
+// ── Status Code-List (readable in value help & list) ────────────────────────
+annotate service.Status with {
+    code        @( title: '{i18n>Code}'        );
+    name        @( title: '{i18n>Name}'        );
+    descr       @( title: '{i18n>Description}' );
+    criticality @( title: '{i18n>Criticality}' );
+};
+
+annotate service.Status with @(
+    UI.Identification : [ { Value : name } ],
+    UI.LineItem       : [
+        { $Type : 'UI.DataField', Label : '{i18n>Code}',        Value : code        },
+        { $Type : 'UI.DataField', Label : '{i18n>Name}',        Value : name        },
+        { $Type : 'UI.DataField', Label : '{i18n>Description}', Value : descr       },
+        { $Type : 'UI.DataField', Label : '{i18n>Criticality}', Value : criticality }
     ]
 );

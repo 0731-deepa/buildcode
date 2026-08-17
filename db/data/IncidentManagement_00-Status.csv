@@ -1,0 +1,7 @@
+code,name,descr,criticality
+N,New,Incident has been created and not yet assigned,0
+A,Assigned,Incident has been assigned to an agent,2
+I,In Process,Incident is actively being worked on,2
+H,On Hold,Incident is blocked or waiting for more information,1
+R,Resolved,Incident has been resolved and awaits confirmation,3
+C,Closed,Incident is fully closed,0
