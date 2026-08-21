@@ -116,9 +116,23 @@ resources:
       service-plan: hdi-shared
   - name: IncidentManagement_00-destination
     type: org.cloudfoundry.managed-service
+    requires:
+      - name: srv-api
     parameters:
       service: destination
       service-plan: lite
+      config:
+        HTML5Runtime_enabled: true
+        init_data:
+          subaccount:
+            existing_destinations_policy: update
+            destinations:
+              - Authentication: NoAuthentication
+                HTML5.ForwardAuthToken: true
+                Name: srv-api
+                ProxyType: Internet
+                Type: HTTP
+                URL: ~{srv-api/srv-url}
 
   - name: IncidentManagement_00-html5-repo-host
     type: org.cloudfoundry.managed-service
@@ -135,4 +149,4 @@ resources:
     type: org.cloudfoundry.managed-service
     parameters:
       service: auditlog
-      service-plan: premium
+      service-plan: build-code
