@@ -1,4 +1,6 @@
 const cds = require('@sap/cds');
+const LOG = cds.log('processor-service');
+
 
 module.exports = cds.service.impl(async function () {
 
@@ -176,5 +178,15 @@ module.exports = cds.service.impl(async function () {
             await resolveCustomerExpand(fakeReq, results);
         });
     }
+    this.before('UPDATE', 'Incidents', async (req) => {
+        const closed = await SELECT.one(1)
+            .from(req.subject)
+            .where({ status_code: 'C' });
+
+        if (closed) {
+            LOG.info(`Incident ${req.data.ID} has already been closed`);
+            req.reject(409, "Can't modify a closed incident!");
+        }
+    });
 
 });
