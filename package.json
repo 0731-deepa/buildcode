@@ -10,8 +10,8 @@
     "@sap-cloud-sdk/resilience": "^4",
     "@sap/cds": "^9",
     "@sap/xssec": "^4",
-    "axios": "^1.6.0",          # ADD
-    "@sap/alert-notification-client": "*"  # ADD
+    "axios": "^1.6.0", 
+    "@sap/alert-notification-client": "*"
   },
   "devDependencies": {
     "@cap-js/sqlite": "^2.4",
