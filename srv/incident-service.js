@@ -1,6 +1,6 @@
 const cds = require('@sap/cds');
 const LOG = cds.log('processor-service');
-
+const { sendAlert } = require("./ans-helper");
 
 module.exports = cds.service.impl(async function () {
 
@@ -10,10 +10,36 @@ module.exports = cds.service.impl(async function () {
     // and read access (@cds.persistence.skip → no HANA table exists for it).
     // ────────────────────────────────────────────────────────────────────────
     const ext = await cds.connect.to('ADOPTION_LAB_API_BUSINESS_PARTNER');
-
+     const { Incidents } = this.entities; // Deepa
     this.on('READ', 'A_BusinessPartner', (req) => {
         return ext.run(req.query);
     });
+   // Alert when a HIGH urgency incident is created Deepa
+  this.before("CREATE", Incidents, async (req) => {
+    const { title, urgency_code, customer_ID } = req.data;
+    if (urgency_code === "H") {
+      try {
+        await sendAlert({
+          eventType: "incident.created.high",
+          severity:  "CRITICAL",
+          category:  "APPLICATION",
+          subject:   `HIGH urgency incident: ${title}`,
+          body:      `New HIGH urgency incident created.
+Customer ID: ${customer_ID}
+Title: ${title}`,
+          resource: {
+            resourceName:    "incident-management-srv",
+            resourceType:    "application",
+            resourceInstance: process.env.CF_INSTANCE_INDEX || "0",
+          },
+          tags: { urgency: "H", customerId: String(customer_ID) }
+        });
+      } catch (err) {
+        // Log but do not block the CREATE
+        req.warn(`ANS alert failed: ${err.message}`);
+      }
+    }
+  });
 
     // ────────────────────────────────────────────────────────────────────────
     // Resolve `$expand=customer` on Incidents manually.
