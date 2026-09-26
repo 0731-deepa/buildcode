@@ -150,3 +150,9 @@ resources:
     parameters:
       service: auditlog
       service-plan: build-code
+
+   - name: IncidentManagement_00-ans
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: alert-notification
+      service-plan: standard     
