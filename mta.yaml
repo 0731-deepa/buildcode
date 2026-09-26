@@ -29,6 +29,7 @@ modules:
       - name: IncidentManagement_00-db
       - name: IncidentManagement_00-destination
       - name: IncidentManagement_00-audit-log
+      - name: incident-management_00-ans   #Deepa
 
   - name: IncidentManagement_00-db-deployer
     type: hdb
@@ -145,7 +146,7 @@ resources:
       service: html5-apps-repo
       service-plan: app-runtime
 
-  - name: IncidentManagement_00-audit-log
+  - name: IncidentManagement_00-audit-log #Deepa
     type: org.cloudfoundry.managed-service
     parameters:
       service: auditlog
